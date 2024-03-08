@@ -10,19 +10,23 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html, get_swagger_ui_oauth2_redirect_html
 import pathlib
 import threading
+import aioredis
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from base_middleware.base_middleware import AuthMiddleware, TracedIDMiddleware, request_context
 from router import router as api_router
 from services.user import UserServeries
+
+
+# 替代startup shutdown写法
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await UserServeries.init_create_table()
-
+    app.state.redis_client = aioredis.from_url(REDIS_URL, encoding="utf-8",decode_responses=True)
     yield
 
+    app.state.redis_client.close()
     print("关闭后执行")
-
 app = FastAPI(
     title="学习Fastapi框架",
     description="介绍和描述",
@@ -51,6 +55,10 @@ app = FastAPI(
         {"url": "/online", "description": "线上生产环境"},
     ]
 )
+
+from core_setting import REDIS_URL
+
+
 
 templates = Jinja2Templates(directory=f"{pathlib.Path.cwd()}/templates/")
 staticfiles = StaticFiles(directory=f"{pathlib.Path.cwd()}/static")
@@ -82,10 +90,7 @@ async def get_response(request: Request):
     print(f"当前异步函数运行的线程ID: {threading.current_thread().ident}")
     return templates.TemplateResponse("index.html", {"request": request})
 
-
-
 app.include_router(api_router, prefix="/api")
-
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
